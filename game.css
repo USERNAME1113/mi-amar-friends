@@ -29,6 +29,16 @@ body[data-screen="writing"] .toolbar{justify-content:flex-end;margin:0 0 18px}
 .author-option:nth-child(4n+4) .author-avatar{background:#b099ff}
 .author-check{margin-right:auto;color:#0a7a5b;visibility:hidden}
 .author-option:has(input:checked) .author-check{visibility:visible}
+.choice-help{margin:0 0 16px!important;font-size:14px}
+.free-options{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.free-option{border:2px solid #ded3ef;border-radius:15px;background:white;padding:14px}
+.free-option:has(input[type="radio"]:checked){background:#e0fff4;border-color:var(--ink);box-shadow:0 3px 0 var(--ink)}
+.free-name{display:block;font-weight:800;font-size:14px}
+.free-name>span{display:block;margin-bottom:7px}
+.free-name>input{font-size:18px;font-weight:700}
+.correct-option{display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:14px;font-weight:700}
+.correct-option>input{width:20px;height:20px;margin:0;padding:0;accent-color:var(--purple);flex-shrink:0}
+@media(max-width:640px){.free-options{grid-template-columns:1fr;gap:12px}.free-option{padding:12px}.free-name>input{font-size:17px}.choice-help{font-size:13px}}
 .draft-actions{margin-top:16px;flex-wrap:wrap}
 .writing-progress{font-size:15px;font-weight:700;color:#7b6a96;text-align:center;margin:22px 0}
 .writing-wait{text-align:center;margin-top:20px!important}
