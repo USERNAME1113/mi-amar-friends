@@ -39,6 +39,17 @@ body[data-screen="writing"] .toolbar{justify-content:flex-end;margin:0 0 18px}
 .correct-option{display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:12px;font-size:14px;font-weight:700}
 .correct-option>input{width:20px;height:20px;margin:0;padding:0;accent-color:var(--purple);flex-shrink:0}
 @media(max-width:640px){.free-options{grid-template-columns:1fr;gap:12px}.free-option{padding:12px}.free-name>input{font-size:17px}.choice-help{font-size:13px}}
+body[data-screen="waiting"] header,body[data-screen="waiting"] footer{display:none}
+body[data-screen="waiting"] main{max-width:960px;padding-top:20px}
+.finished-card{text-align:center;padding:38px 28px}
+.finished-card h2{font-size:34px;margin-bottom:15px}
+.finished-card>p{font-size:17px;line-height:1.9}
+.finished-icon{background:var(--mint);color:var(--ink);border:3px solid var(--ink);width:75px;height:75px;border-radius:24px;display:grid;place-items:center;font-size:40px;font-weight:900;margin:0 auto 24px;box-shadow:0 5px 0 var(--ink);transform:rotate(-6deg)}
+.finish-list{display:flex;flex-direction:column;gap:12px;margin-top:25px;text-align:right}
+.finish-person{display:flex;align-items:center;gap:12px;border:2px solid #e1d7ef;border-radius:14px;padding:12px;background:white}
+.finish-person b{flex:1;overflow-wrap:anywhere}
+.finish-person>span:last-child{color:#6f5d85;font-size:14px}
+@media(max-width:640px){.finished-card{padding:28px 18px}.finished-card h2{font-size:28px}.finished-card>p{font-size:15px}.score-row{gap:8px;padding:10px}.score-row .delta{font-size:11px}.score-row .score-name{font-size:14px}}
 .draft-actions{margin-top:16px;flex-wrap:wrap}
 .writing-progress{font-size:15px;font-weight:700;color:#7b6a96;text-align:center;margin:22px 0}
 .writing-wait{text-align:center;margin-top:20px!important}

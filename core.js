@@ -9,18 +9,16 @@ export function shuffle(items, rng = Math.random) {
   return a;
 }
 export function makeGame(host) {
-  return { phase: 'lobby', cycle: 1, players: [{ ...host, active: true, ready: false, score: 0, questions: [] }], questions: [], round: -1, votes: {}, duration: 25, roundLimit: 0, deadline: 0, awarded: {} };
+  return { phase: 'lobby', cycle: 1, players: [{ ...host, active: true, ready: false, score: 0, questions: [] }], questions: [], answers: {}, awarded: {} };
 }
 export function submitQuestions(game, id, texts) {
   const p = game.players.find(p => p.id === id);
-  if (!p || game.phase !== 'writing' || !Array.isArray(texts) || texts.length !== MAX_QUESTIONS) return false;
-  const raw = texts[0];
-  const text = cleanText(raw?.text);
+  if (!p || game.phase !== 'writing' || !Array.isArray(texts) || texts.length !== 1) return false;
+  const raw = texts[0], text = cleanText(raw?.text);
   const options = Array.isArray(raw?.options) ? raw.options.map(name => cleanText(name, 40)) : [];
   const correctIndex = raw?.correctIndex;
   if (text.length < 3 || options.length !== 4 || options.some(name => !name) || new Set(options.map(name => name.toLocaleLowerCase())).size !== 4 || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3) return false;
-  const questions = [{ text, options, correctIndex }];
-  p.questions = questions; p.ready = true; return true;
+  p.questions = [{ text, options, correctIndex }]; p.ready = true; return true;
 }
 export function startWriting(game) {
   if (game.phase !== 'lobby' || game.players.filter(p => p.active).length < 2) return false;
@@ -30,60 +28,65 @@ export function canStart(game) {
   const active = game.players.filter(p => p.active);
   return game.phase === 'writing' && active.length >= 2 && active.every(p => p.ready);
 }
-export function startGame(game, now = Date.now()) {
+export function startGame(game) {
   if (!canStart(game)) return false;
-  const all = game.players.filter(p => p.active).map(p => {
+  game.questions = shuffle(game.players.filter(p => p.active).map(p => {
     const q = p.questions[0];
     return { text: q.text, options: shuffle(q.options.map((name, i) => ({ id: 'choice-' + i, name }))), owner: 'choice-' + q.correctIndex, submittedBy: p.id };
-  });
-  game.questions = shuffle(all);
-  game.round = -1; return nextRound(game, now);
+  }));
+  game.answers = {}; game.awarded = {}; game.phase = 'question'; return true;
 }
-export function nextRound(game, now = Date.now()) {
-  if (!['writing', 'reveal'].includes(game.phase)) return false;
-  game.round++; game.votes = {}; game.awarded = {};
-  if (game.round >= game.questions.length) { game.phase = 'results'; return true; }
-  game.phase = 'question'; game.started = now; game.deadline = now + game.duration * 1000; return true;
+function questionIndices(game, id) {
+  return game.questions.flatMap((q, index) => q.submittedBy === id ? [] : [index]);
 }
-export function castVote(game, voter, target, now = Date.now()) {
-  const q = game.questions[game.round];
-  if (game.phase !== 'question' || now > game.deadline || !q || (q.submittedBy || q.owner) === voter || Object.hasOwn(game.votes, voter)) return false;
-  if (!game.players.some(p => p.id === voter && p.active) || !q.options.some(option => option.id === target)) return false;
-  game.votes[voter] = { target, at: Math.max(now, game.started) }; return true;
+function progress(game, id) {
+  const indices = questionIndices(game, id), answers = game.answers[id] || {};
+  const answered = indices.filter(index => Object.hasOwn(answers, index)).length;
+  return { answered, total: indices.length, questionIndex: indices.find(index => !Object.hasOwn(answers, index)), finished: answered === indices.length };
 }
-export function eligibleVoters(game) {
-  const q = game.questions[game.round];
-  return q ? game.players.filter(p => p.active && p.id !== (q.submittedBy || q.owner)) : [];
-}
-export function allVoted(game) {
-  return game.phase === 'question' && eligibleVoters(game).every(p => Object.hasOwn(game.votes, p.id));
-}
-export function reveal(game) {
-  if (game.phase !== 'question') return false;
-  const q = game.questions[game.round]; game.phase = 'reveal';
-  for (const p of game.players) {
-    const vote = game.votes[p.id];
-    const delta = vote?.target === q.owner ? 1000 + Math.round(500 * Math.max(0, 1 - (vote.at - game.started) / (game.duration * 1000))) : 0;
-    game.awarded[p.id] = delta; p.score += delta;
-  }
+export function castVote(game, voter, target, questionIndex) {
+  const player = game.players.find(p => p.id === voter && p.active);
+  if (game.phase !== 'question' || !player || !Number.isInteger(questionIndex)) return false;
+  const current = progress(game, voter);
+  if (current.finished || current.questionIndex !== questionIndex) return false;
+  const q = game.questions[questionIndex];
+  if (!q || q.submittedBy === voter || !q.options.some(option => option.id === target)) return false;
+  game.answers[voter] ||= {};
+  game.answers[voter][questionIndex] = target;
+  finishIfReady(game);
   return true;
+}
+export function finishIfReady(game) {
+  if (game.phase !== 'question') return false;
+  const active = game.players.filter(p => p.active);
+  if (!active.length || !active.every(p => progress(game, p.id).finished)) return false;
+  for (const p of game.players) {
+    const correct = Object.entries(game.answers[p.id] || {}).filter(([index, choice]) => game.questions[Number(index)]?.owner === choice).length;
+    game.awarded[p.id] = correct * 1000;
+    p.score += game.awarded[p.id];
+  }
+  game.phase = 'results'; return true;
 }
 export function startNewCycle(game) {
   if (game.phase !== 'results' || game.players.filter(p => p.active).length < 2) return false;
-  game.cycle++;
-  game.phase = 'writing'; game.questions = []; game.round = -1; game.votes = {}; game.awarded = {};
+  game.cycle++; game.phase = 'writing'; game.questions = []; game.answers = {}; game.awarded = {};
   for (const p of game.players) { p.questions = []; p.ready = false; }
   return true;
 }
-export function publicView(game, id, now = Date.now()) {
-  const q = game.questions[game.round], me = game.players.find(p => p.id === id);
+export function publicView(game, id) {
+  const me = game.players.find(p => p.id === id), current = progress(game, id);
+  const q = game.phase === 'question' ? game.questions[current.questionIndex] : null;
+  const results = game.phase === 'results';
   return {
-    phase: game.phase, cycle: game.cycle, players: game.players.map(({ id, name, active, ready, score, questions }) => ({ id, name, active, ready, score, count: questions.length })),
-    round: game.round, total: game.questions.length, duration: game.duration, roundLimit: game.roundLimit,
-    remaining: Math.max(0, game.deadline - now), text: q?.text || '', options: q?.options || [],
-    ownQuestion: (q?.submittedBy || q?.owner) === id, owner: game.phase === 'reveal' ? q?.owner : null,
-    vote: game.votes[id]?.target || null, voted: Object.keys(game.votes).length,
-    eligible: eligibleVoters(game).length, awarded: game.phase === 'reveal' ? game.awarded : {},
+    phase: game.phase === 'question' && current.finished ? 'waiting' : game.phase,
+    cycle: game.cycle, questionIndex: q ? current.questionIndex : null, round: current.answered, total: current.total,
+    players: game.players.map(p => {
+      const state = progress(game, p.id);
+      return { id: p.id, name: p.name, active: p.active, ready: p.ready, count: p.questions.length, answered: state.answered, total: state.total, finished: state.finished,
+        ...(results ? { score: p.score, correct: (game.awarded[p.id] || 0) / 1000 } : {}) };
+    }),
+    text: q?.text || '', options: q?.options || [], vote: null, owner: null, ownQuestion: false,
+    awarded: results ? game.awarded : {},
     myQuestions: game.phase === 'writing' ? me?.questions || [] : [],
   };
 }
