@@ -1,5 +1,5 @@
-import {ROOM_PREFIXES,normalizeRoomCode,isRoomCode,roomPeerIds} from './rooms.js?v=20261123-pace1';
-import {cleanText,makeGame,submitQuestions,canStart,startWriting,startNewCycle,startGame,castVote,finishIfReady,publicView,MAX_PLAYERS} from './core.js?v=20261123-pace1';
+import {ROOM_PREFIXES,normalizeRoomCode,isRoomCode,roomPeerIds} from './rooms.js?v=20261123-timed1';
+import {cleanText,makeGame,submitQuestions,canStart,startWriting,startNewCycle,startGame,castVote,finishIfReady,publicView,MAX_PLAYERS,QUESTION_TIME_MS} from './core.js?v=20261123-timed1';
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -43,7 +43,7 @@ async function joinRoom(name,c){
           if(peer!==p||joinChosen){candidate.close();return;}
           joinChosen=true;conn=candidate;
           for(const other of joinConnections)if(other!==candidate)other.close();
-          candidate.send({type:'join',name,token:identity,protocol:4});
+          candidate.send({type:'join',name,token:identity,protocol:5});
         });
         candidate.on('data',msg=>{if(conn===candidate)guestMessage(msg);});
         candidate.on('close',()=>{if(conn===candidate&&screen!=='home'&&screen!=='loading'){networkError='החיבור למארח נותק. לחצו כדי להתחבר מחדש.';render(true);}});
@@ -54,25 +54,25 @@ async function joinRoom(name,c){
   }catch(e){fail(e.message);}
 }
 function acceptConnection(c){let id=null,joined=false;const expiry=setTimeout(()=>{if(!joined)c.close();},10000);c.on('data',msg=>{if(!msg||typeof msg!=='object'||Array.isArray(msg))return;
-  if(!joined){if(msg.type!=='join')return;if(msg.protocol!==4){c.send({type:'error',text:'העמוד שלך מגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.'});return;}const token=cleanText(msg.token,80),name=cleanText(msg.name,20);if(!name||!/^[-a-zA-Z0-9]{20,80}$/.test(token))return;
+  if(!joined){if(msg.type!=='join')return;if(msg.protocol!==5){c.send({type:'error',text:'העמוד שלך מגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.'});return;}const token=cleanText(msg.token,80),name=cleanText(msg.name,20);if(!name||!/^[-a-zA-Z0-9]{20,80}$/.test(token))return;
     let p=game.players.find(p=>p.token===token);if(p?.id===identity){c.send({type:'error',text:'השם הזה שייך למארח. פתחו את הקישור במכשיר אחר.'});return;}
     if(!p){if(game.phase!=='lobby'){c.send({type:'error',text:'המשחק כבר התחיל. תוכלו להצטרף במשחק הבא.'});return;}if(game.players.length>=MAX_PLAYERS){c.send({type:'error',text:'החדר מלא (עד 20 שחקנים).'});return;}if(game.players.some(p=>p.name===name)){c.send({type:'error',text:'השם כבר בשימוש בחדר. בחרו שם אחר.'});return;}
       id=crypto.randomUUID();p={id,name,token,active:true,ready:false,score:0,questions:[]};game.players.push(p);
     }else{id=p.id;const old=connections.get(id);if(old&&old!==c)old.close();p.active=true;}
-    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code,protocol:4});update();return;
+    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code,protocol:5});update();return;
   }
   if(connections.get(id)!==c)return;
   c._lastSeen=Date.now();const livePlayer=game.players.find(p=>p.id===id);if(livePlayer&&!livePlayer.active){livePlayer.active=true;update();}if(msg.type==='ping'){c.send({type:'pong'});return;}
   if(msg.type==='edit'&&game.phase==='writing'){const p=game.players.find(p=>p.id===id);if(p)p.ready=false;update();return;}
   if(msg.type==='submit'){if(submitQuestions(game,id,msg.texts)){c.send({type:'saved'});update();}else c.send({type:'error',text:'צריך משפט אחד, ארבעה שמות שונים ותשובה נכונה מסומנת.'});return;}
-  if(msg.type==='vote'){if(castVote(game,id,msg.target,msg.questionIndex))update();}
+  if(msg.type==='vote'){if(msg.cycle===game.cycle&&castVote(game,id,msg.target,msg.questionIndex))update();}
 });c.on('close',()=>{clearTimeout(expiry);if(!game||connections.get(id)!==c)return;connections.delete(id);const p=game.players.find(p=>p.id===id);if(p)p.active=false;finishIfReady(game);update();});c.on('error',()=>{});}
 let myId=identity;
-function guestMessage(msg){if(!msg||typeof msg!=='object')return;lastHeartbeat=Date.now();if(msg.type==='welcome'){if(msg.protocol!==4){fail('המארח משתמש בגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.');return;}myId=msg.id;busy=false;clearTimeout(joinTimer);}else if(msg.type==='state'){const previous=view?.phase,previousCycle=view?.cycle;view=msg.view;receivedAt=performance.now();networkError='';pending=false;if((previous!=='lobby'&&view.phase==='lobby')||(previousCycle!==undefined&&previousCycle!==view.cycle)){drafts=[''];draftOwners=[];draftChoices=[['','','','']];submitted=false;}submitted=Boolean(view.players.find(p=>p.id===myId)?.ready);render();}else if(msg.type==='saved'){submitted=true;notify('נשמר! אף אחד אחר לא רואה מה כתבתם.');}else if(msg.type==='closed'){cleanup();home();notify('המארח סגר את החדר.');}else if(msg.type==='kicked'){cleanup();home();notify('המארח הוציא אותך מהחדר.');}else if(msg.type==='error'){fail(msg.text);}}
-function update(){if(!game||!isHost)return;view=publicView(game,identity);myId=identity;receivedAt=performance.now();for(const [id,c] of connections){if(c.open)c.send({type:'state',view:publicView(game,id)});}render();}
+function guestMessage(msg){if(!msg||typeof msg!=='object')return;lastHeartbeat=Date.now();if(msg.type==='welcome'){if(msg.protocol!==5){fail('המארח משתמש בגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.');return;}myId=msg.id;busy=false;clearTimeout(joinTimer);}else if(msg.type==='state'){const previous=view?.phase,previousCycle=view?.cycle;view=msg.view;receivedAt=performance.now();networkError='';pending=false;if((previous!=='lobby'&&view.phase==='lobby')||(previousCycle!==undefined&&previousCycle!==view.cycle)){drafts=[''];draftOwners=[];draftChoices=[['','','','']];submitted=false;}submitted=Boolean(view.players.find(p=>p.id===myId)?.ready);render();}else if(msg.type==='saved'){submitted=true;notify('נשמר! אף אחד אחר לא רואה מה כתבתם.');}else if(msg.type==='closed'){cleanup();home();notify('המארח סגר את החדר.');}else if(msg.type==='kicked'){cleanup();home();notify('המארח הוציא אותך מהחדר.');}else if(msg.type==='error'){fail(msg.text);}}
+function update(){if(!game||!isHost)return;const previousIndex=view?.questionIndex;view=publicView(game,identity);if(demo&&view.questionIndex!==previousIndex)scheduleBots();myId=identity;receivedAt=performance.now();for(const [id,c] of connections){if(c.open)c.send({type:'state',view:publicView(game,id)});}render();}
 function listPlayers(){return view.players.map(p=>`<div class="player"><span class="avatar">${esc(p.name.charAt(0))}</span><span class="player-name">${esc(p.name)}${p.id===myId?' <small>(אני)</small>':''}${p.id===identity&&isHost?' <small>👑</small>':''}</span><span class="status ${p.ready?'ready':''}">${!p.active?'מנותק':view.phase==='lobby'?'✓ הצטרף/ה':p.ready?'✓ מוכן/ה':'כותב/ת…'}</span>${isHost&&p.id!==identity?`<button class="kick" data-kick="${esc(p.id)}" aria-label="הוצאת ${esc(p.name)}">×</button>`:''}</div>`).join('');}
 function render(force=false){if(!view)return;const key=JSON.stringify([view.phase,view.cycle,view.questionIndex,view.round,view.players,view.vote,view.voted,view.owner,view.awarded,networkError,submitted,view.duration,view.roundLimit]);if(!force&&key===lastRenderKey)return;lastRenderKey=key;const old=screen;screen=view.phase;document.body.dataset.screen=view.phase;
-  if(view.phase==='lobby')renderWaitingRoom();else if(view.phase==='writing')renderLobby();else if(view.phase==='results')renderResults();else if(view.phase==='waiting')renderWaiting();else renderRound();
+  if(view.phase==='lobby')renderWaitingRoom();else if(view.phase==='writing')renderLobby();else if(view.phase==='results')renderResults();else renderRound();
   if(networkError){const n=document.createElement('div');n.className='error-box';n.textContent=networkError;if(!isHost){const b=document.createElement('button');b.className='btn small section-gap';b.textContent='להתחבר מחדש';b.onclick=()=>joinRoom(currentName,code);n.append(b);}app.prepend(n);}
   if(old!==screen){window.scrollTo({top:0,behavior:'instant'});if(screen==='results')confetti();}
 }
@@ -115,27 +115,48 @@ function captureDrafts(){const text=document.querySelector('[data-draft]');if(te
 
 function scores(){return [...view.players].sort((a,b)=>b.score-a.score).map((p,i)=>`<div class="score-row"><span class="rank">${i===0&&view.phase==='results'?'🥇':i+1}</span><span class="avatar">${esc(p.name.charAt(0))}</span><span class="score-name">${esc(p.name)}${p.id===myId?' (אני)':''}</span><span class="delta">${p.correct||0} תשובות נכונות</span><span class="points">${num(p.score)}</span></div>`).join('');}
 function renderRound(){
-  app.innerHTML=`<div class="round-wrap play-board"><div class="progress game-timer"><div style="width:${view.total?Math.round(view.round/view.total*100):0}%"></div></div><div class="round-meta"><strong>מי כתב את זה?</strong><span class="round-counter">משפט ${view.round+1} מתוך ${view.total}</span></div><section class="card quote-card"><div class="quote-mystery" aria-hidden="true">???</div><h2 class="quote-text">${esc(view.text)}</h2></section><div class="answers" aria-label="מי כתב את המשפט?">${view.options.map((p,i)=>`<button class="answer ${view.vote===p.id?'selected':''}" data-vote="${esc(p.id)}" ${view.vote?'disabled':''} aria-pressed="${view.vote===p.id?'true':'false'}" title="מקש ${i+1}"><span class="answer-avatar" aria-hidden="true">${esc(p.name.charAt(0))}</span><span class="answer-name">${esc(p.name)}</span></button>`).join('')}</div><p class="vote-status">${view.vote?'שומרים את הבחירה…':'בוחרים שם וממשיכים למשפט הבא, בקצב שלכם.'}<br><span>הניקוד יופיע בסוף, כשכולם יסיימו.</span></p><div class="play-bottom">${toolbar()}</div></div>`;
+  app.innerHTML=`<div class="round-wrap play-board"><div class="progress game-timer"><div id="timer-bar" style="width:${Math.round(view.remaining/QUESTION_TIME_MS*100)}%"></div></div><div class="round-meta"><strong>מי כתב את זה?</strong><span class="round-counter">משפט ${view.round+1} מתוך ${view.total} · <span id="seconds">${Math.ceil(view.remaining/1000)}</span> שניות</span></div><section class="card quote-card"><div class="quote-mystery" aria-hidden="true">???</div><h2 class="quote-text">${esc(view.text)}</h2></section><div class="answers" aria-label="מי כתב את המשפט?">${view.options.map((p,i)=>`<button class="answer ${view.vote===p.id?'selected':''}" data-vote="${esc(p.id)}" ${view.vote||view.ownQuestion?'disabled':''} aria-pressed="${view.vote===p.id?'true':'false'}" title="מקש ${i+1}"><span class="answer-avatar" aria-hidden="true">${esc(p.name.charAt(0))}</span><span class="answer-name">${esc(p.name)}</span></button>`).join('')}</div><p class="vote-status">${view.ownQuestion?'זה המשפט שהוספתם. מחכים לבחירות של השאר.':view.vote?'הבחירה נשמרה. מחכים לשאר המשתתפים.':'בחרו מי כתב את המשפט לפני שהזמן נגמר.'}<br><span>${view.voted} מתוך ${view.eligible} בחרו</span></p><div class="play-bottom">${toolbar()}</div></div>`;
 }
-function renderWaiting(){
-  app.innerHTML=toolbar()+`<div class="writing-wrap"><section class="card finished-card"><div class="finished-icon" aria-hidden="true">✓</div><h2>סיימתם לבחור!</h2><p class="muted">מחכים ששאר החבר׳ה יסיימו.<br>התוצאות ייפתחו כאן אצל כולם, בלי לחשוף תשובות בדרך.</p><div class="finish-list">${view.players.map(p=>`<div class="finish-person"><span class="avatar">${esc(p.name.charAt(0))}</span><b>${esc(p.name)}${p.id===myId?' (אני)':''}</b><span>${!p.active?'מנותק/ת':p.finished?'✓ סיים/ה':`${p.answered} / ${p.total}`}</span></div>`).join('')}</div></section></div>`;
+function renderReview(){
+  const rows=view.review.map(item=>`<article class="card"><h3>${esc(item.text)}</h3><p>הוסיף/ה למשחק: <strong>${esc(item.submittedBy)}</strong></p><ul>${item.options.map(option=>`<li class="${option.id===item.owner?'correct-option-result':''}">${esc(option.name)}${option.id===item.owner?' · ✓ מי שכתב/ה':''}</li>`).join('')}</ul></article>`).join('');
+  return `<section class="answer-review"><h2>מי כתב מה?</h2>${rows}</section>`;
 }
 
-function renderResults(){const sorted=[...view.players].sort((a,b)=>b.score-a.score),winners=sorted.filter(p=>p.score===sorted[0]?.score);app.innerHTML=`<div class="round-wrap">${toolbar()}<section class="results-hero"><div class="trophy">🏆</div><h1>${winners.length===1?`${esc(winners[0].name)} <em>מוביל/ה!</em>`:'<em>יש לנו תיקו!</em>'}</h1><p>סיבוב ${view.cycle} הסתיים. הניקוד נשמר לסיבוב הבא.</p></section><section class="card end-card"><h2>לוח התהילה</h2><div class="score-table">${scores()}</div>${isHost?'<button class="btn wide section-gap" data-action="restart">סיבוב חדש — משפט חדש לכל אחד 🎉</button>':'<div class="note">עוד משחק? המארח יכול לפתוח סיבוב חדש באותו חדר.</div>'}<button class="btn outline wide section-gap" data-action="result-share">לשתף את התוצאה</button></section></div>`;playTone(true);}
-function start(){if(!canStart(game)){notify('צריך לפחות שני שחקנים ושכולם יסיימו לכתוב');return;}if(startGame(game)){update();scheduleBots();playTone();}}
-function scheduleBots(){if(!demo||game.phase!=='question')return;for(const p of game.players.filter(p=>p.bot)){const answerNext=()=>{if(!game||!demo||game.phase!=='question')return;const state=publicView(game,p.id);if(state.phase!=='question')return;const q=game.questions[state.questionIndex];castVote(game,p.id,Math.random()<.65?q.owner:q.options[Math.floor(Math.random()*4)].id,state.questionIndex);update();if(game.phase==='question')demoTimers.push(setTimeout(answerNext,1200+Math.random()*1800));};demoTimers.push(setTimeout(answerNext,1800+Math.random()*2200));}}
+function renderResults(){const sorted=[...view.players].sort((a,b)=>b.score-a.score),winners=sorted.filter(p=>p.score===sorted[0]?.score);app.innerHTML=`<div class="round-wrap">${toolbar()}<section class="results-hero"><div class="trophy">🏆</div><h1>${winners.length===1?`${esc(winners[0].name)} <em>מוביל/ה!</em>`:'<em>יש לנו תיקו!</em>'}</h1><p>סיבוב ${view.cycle} הסתיים. הניקוד נשמר לסיבוב הבא.</p></section><section class="card end-card"><h2>לוח התהילה</h2><div class="score-table">${scores()}</div>${isHost?'<button class="btn wide section-gap" data-action="restart">סיבוב חדש — משפט חדש לכל אחד 🎉</button>':'<div class="note">עוד משחק? המארח יכול לפתוח סיבוב חדש באותו חדר.</div>'}<button class="btn outline wide section-gap" data-action="result-share">לשתף את התוצאה</button></section>${renderReview()}</div>`;playTone(true);}
+function start(){if(!canStart(game)){notify('צריך לפחות שני שחקנים ושכולם יסיימו לכתוב');return;}if(startGame(game)){update();playTone();}}
+function scheduleBots(){
+  demoTimers.forEach(clearTimeout);
+  demoTimers=[];
+  if(!demo||game.phase!=='question')return;
+  const index=game.questionIndex, cycle=game.cycle, question=game.questions[index];
+  for(const player of game.players.filter(p=>p.bot&&p.id!==question.submittedBy)){
+    demoTimers.push(setTimeout(()=>{
+      if(!game||game.cycle!==cycle||game.questionIndex!==index)return;
+      const choice=Math.random()<.65?question.owner:question.options[Math.floor(Math.random()*4)].id;
+      if(castVote(game,player.id,choice,index))update();
+    },1200+Math.random()*2200));
+  }
+}
+
 function demoGame(){cleanup();demo=true;isHost=true;code='DEMO';currentName='אני';drafts=['אני רק בא לחמש דקות, נשבע'];draftOwners=['1'];draftChoices=[['שמעון','סדעון','פוסח','דניאל']];submitted=false;game=makeGame({id:identity,name:'אני',token:identity});for(const [i,name,text] of [[1,'נועה','מישהו ראה את המטען שלי? הוא היה פה לפני שנייה'],[2,'איתי','אני לא מאחר, אתם פשוט באים מוקדם מדי'],[3,'מאיה','מי אכל את הפיצה שהשארתי במקרר?!']])game.players.push({id:'bot'+i,name,active:true,ready:true,score:0,questions:[{text,options:['שמעון','סדעון','פוסח','דניאל'],correctIndex:i%4}],bot:true});update();}
 async function copy(text){try{await navigator.clipboard.writeText(text);notify('הקישור הועתק! שולחים לחבר׳ה.');}catch{const a=document.createElement('textarea');a.value=text;document.body.append(a);a.select();const ok=document.execCommand('copy');a.remove();notify(ok?'הקישור הועתק':'לא ניתן להעתיק. הקוד לחדר הוא '+code);}}
 async function share(text,url){if(navigator.share){try{await navigator.share({title:'מי כתב את זה?',text,url});return;}catch(e){if(e.name==='AbortError')return;}}copy(text+'\n'+url);}
 function cleanup(){clearTimeout(joinTimer);for(const p of aliasPeers)p.destroy();aliasPeers=[];for(const c of joinConnections)c.close();joinConnections=[];joinMissing=0;joinChosen=false;demoTimers.forEach(clearTimeout);demoTimers=[];for(const c of connections.values())c.close();connections.clear();conn?.close();peer?.destroy();conn=null;peer=null;game=null;view=null;isHost=false;demo=false;busy=false;pending=false;networkError='';lastRenderKey='';myId=identity;}
 function leave(){if(isHost&&!demo&&connections.size){for(const c of connections.values())if(c.open)c.send({type:'closed'});}cleanup();const u=new URL(location.href);u.search='';history.replaceState(null,'',u.pathname);joinCode='';home();}
 app.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;
-  if(b.dataset.vote){if(isHost){if(castVote(game,identity,b.dataset.vote,view.questionIndex)){playTone();update();}}else if(conn?.open){conn.send({type:'vote',questionIndex:view.questionIndex,target:b.dataset.vote});view.vote=b.dataset.vote;render(true);playTone();}else notify('החיבור למארח נותק. נסו להתחבר מחדש.');return;}
+  if(b.dataset.vote){if(isHost){if(castVote(game,identity,b.dataset.vote,view.questionIndex)){playTone();update();}}else if(conn?.open){conn.send({type:'vote',cycle:view.cycle,questionIndex:view.questionIndex,target:b.dataset.vote});view.vote=b.dataset.vote;render(true);playTone();}else notify('החיבור למארח נותק. נסו להתחבר מחדש.');return;}
   if(b.dataset.kick&&isHost){const id=b.dataset.kick,c=connections.get(id);if(c?.open)c.send({type:'kicked'});connections.delete(id);c?.close();game.players=game.players.filter(p=>p.id!==id);update();return;}
   switch(b.dataset.action){case'demo':demoGame();break;case'leave':case'cancel':leave();break;case'copy':copy(link());break;case'share':share('מי כתב את זה? בואו לשחק! קוד החדר: '+code,link());break;case'edit':drafts=[view.myQuestions[0]?.text||''];draftChoices=[[...(view.myQuestions[0]?.options||['','','',''])]];draftOwners=view.myQuestions.length?[String(view.myQuestions[0].correctIndex)]:[];submitted=false;if(isHost){game.players.find(p=>p.id===identity).ready=false;update();}else{if(conn?.open)conn.send({type:'edit'});render(true);}break;case'begin-writing':if(isHost&&startWriting(game)){update();playTone();}break;case'start':start();break;case'restart':if(isHost&&startNewCycle(game)){drafts=[''];draftOwners=[];draftChoices=[['','','','']];submitted=false;if(demo){for(const p of game.players.filter(p=>p.bot))submitQuestions(game,p.id,[{text:'משפט חדש של '+p.name,options:['שמעון','סדעון','פוסח','דניאל'],correctIndex:1}]);}update();}break;case'result-share':share('שיחקנו ״מי כתב את זה?״ 🏆\n'+[...view.players].sort((a,b)=>b.score-a.score).map(p=>p.name+': '+num(p.score)+' נקודות').join('\n'),new URL('./',location.href).href);break;}
 });
 function confetti(){const d=document.createElement('div');d.className='confetti';d.setAttribute('aria-hidden','true');for(let i=0;i<32;i++){const p=document.createElement('i');p.style.left=Math.random()*100+'%';p.style.animationDelay=Math.random()+'s';p.style.transform=`rotate(${Math.random()*180}deg)`;d.append(p);}document.body.append(d);setTimeout(()=>d.remove(),5000);}
 setInterval(()=>{if(!view)return;
+  if(isHost&&finishIfReady(game))update();
+  if(view.phase==='question'){
+    const remaining=Math.max(0,view.remaining-(performance.now()-receivedAt));
+    const timer=$('#seconds'), bar=$('#timer-bar');
+    if(timer)timer.textContent=Math.ceil(remaining/1000);
+    if(bar)bar.style.width=(remaining/QUESTION_TIME_MS*100)+'%';
+  }
   if(!isHost&&conn?.open&&Date.now()-lastHeartbeat>5000)conn.send({type:'ping'});
   if(isHost&&!demo){let changed=false;for(const [id,c] of connections){if(Date.now()-(c._lastSeen||0)>20000){const p=game.players.find(p=>p.id===id);if(p?.active){p.active=false;changed=true;}}}if(changed){finishIfReady(game);update();}}
 },250);

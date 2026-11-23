@@ -49,6 +49,13 @@ body[data-screen="waiting"] main{max-width:960px;padding-top:20px}
 .finish-person{display:flex;align-items:center;gap:12px;border:2px solid #e1d7ef;border-radius:14px;padding:12px;background:white}
 .finish-person b{flex:1;overflow-wrap:anywhere}
 .finish-person>span:last-child{color:#6f5d85;font-size:14px}
+.answer-review{max-width:720px;margin:32px auto 0;display:grid;gap:18px}
+.answer-review>h2{color:white;text-align:center}
+.answer-review article h3{overflow-wrap:anywhere}
+.answer-review article p{margin:8px 0;color:#655475}
+.answer-review ul{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:0;margin:15px 0 0;list-style:none}
+.answer-review li{padding:9px 12px;border-radius:10px;background:#eee8f8;overflow-wrap:anywhere}
+.answer-review .correct-option-result{background:#d5f8e8;color:#14513c;font-weight:800}
 @media(max-width:640px){.finished-card{padding:28px 18px}.finished-card h2{font-size:28px}.finished-card>p{font-size:15px}.score-row{gap:8px;padding:10px}.score-row .delta{font-size:11px}.score-row .score-name{font-size:14px}}
 .draft-actions{margin-top:16px;flex-wrap:wrap}
 .writing-progress{font-size:15px;font-weight:700;color:#7b6a96;text-align:center;margin:22px 0}
