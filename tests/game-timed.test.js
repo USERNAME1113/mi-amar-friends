@@ -14,7 +14,7 @@ function fixture() {
 function voteWithEveryone(game, now) {
   const index = game.questionIndex;
   const q = game.questions[index];
-  for (const player of game.players.filter(p => p.id !== q.submittedBy)) {
+  for (const player of game.players) {
     assert.equal(castVote(game, player.id, q.owner, index, now), true);
   }
 }
@@ -25,14 +25,16 @@ test('Everyone sees the same question and a fresh timer after all eligible votes
   assert.equal(canStart(game), true);
   startGame(game, 1000);
   const q = game.questions[0];
-  const voters = game.players.filter(p => p.id !== q.submittedBy);
+  const voters = game.players;
   assert.equal(publicView(game,'a',1000).text, publicView(game,'b',1000).text);
-  assert.equal(castVote(game,q.submittedBy,q.owner,0,1500),false);
+  assert.equal(publicView(game,q.submittedBy,1500).eligible,3);
   assert.equal(castVote(game,voters[0].id,q.owner,0,1500),true);
   assert.equal(castVote(game,voters[0].id,q.owner,0,1500),false);
   assert.equal(game.questionIndex,0);
   assert.equal(publicView(game,voters[0].id,1500).vote,q.owner);
-  assert.equal(castVote(game,voters[1].id,q.owner,0,1600),true);
+  assert.equal(castVote(game,voters[1].id,q.owner,0,1550),true);
+  assert.equal(game.questionIndex,0);
+  assert.equal(castVote(game,voters[2].id,q.owner,0,1600),true);
   assert.equal(game.questionIndex,1);
   assert.equal(publicView(game,'a',1600).remaining,QUESTION_TIME_MS);
   assert.equal(castVote(game,'a',q.owner,0,1700),false);
@@ -61,7 +63,7 @@ test('Scores, submitters and correct answers appear only in the final review', (
   }
   const view = publicView(game,'b');
   assert.equal(view.phase,'results');
-  assert.deepEqual(view.players.map(p => p.score), [2000,2000,2000]);
+  assert.deepEqual(view.players.map(p => p.score), [3000,3000,3000]);
   assert.equal(view.review.length,3);
   for (const item of view.review) {
     assert.equal(item.text,'משפט של '+item.submittedBy);
@@ -71,14 +73,15 @@ test('Scores, submitters and correct answers appear only in the final review', (
   assert.equal(finishIfReady(game),false);
   assert.equal(startNewCycle(game),true);
   assert.deepEqual(publicView(game,'a').review,[]);
-  assert.ok(game.players.every(p => p.score===2000 && !p.ready));
+  assert.ok(game.players.every(p => p.score===3000 && !p.ready));
 });
 test('A disconnected voter no longer blocks the next question', () => {
   const game = fixture();
   startGame(game,0);
   const q = game.questions[0];
-  const [first,second] = game.players.filter(p => p.id !== q.submittedBy);
+  const [first,second,third] = game.players;
   castVote(game,first.id,q.owner,0,1);
+  castVote(game,third.id,q.owner,0,1);
   second.active=false;
   assert.equal(finishIfReady(game,2),true);
   assert.equal(game.questionIndex,1);

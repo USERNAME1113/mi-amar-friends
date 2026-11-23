@@ -40,15 +40,15 @@ export function startGame(game, now = Date.now()) {
   game.deadline = now + QUESTION_TIME_MS;
   return true;
 }
-function votersFor(game, question) {
-  return game.players.filter(p => p.active && p.id !== question.submittedBy);
+function votersFor(game) {
+  return game.players.filter(p => p.active);
 }
 export function castVote(game, voter, target, questionIndex, now = Date.now()) {
   const player = game.players.find(p => p.id === voter && p.active);
   if (game.phase !== 'question' || !player || game.questionIndex !== questionIndex || now >= game.deadline) return false;
   if (Object.hasOwn(game.answers[voter] || {}, questionIndex)) return false;
   const q = game.questions[questionIndex];
-  if (!q || q.submittedBy === voter || !q.options.some(option => option.id === target)) return false;
+  if (!q || !q.options.some(option => option.id === target)) return false;
   game.answers[voter] ||= {};
   game.answers[voter][questionIndex] = target;
   finishIfReady(game, now);
@@ -57,7 +57,7 @@ export function castVote(game, voter, target, questionIndex, now = Date.now()) {
 export function finishIfReady(game, now = Date.now()) {
   if (game.phase !== 'question') return false;
   const index = game.questionIndex;
-  const allVoted = votersFor(game, game.questions[index]).every(p => Object.hasOwn(game.answers[p.id] || {}, index));
+  const allVoted = votersFor(game).every(p => Object.hasOwn(game.answers[p.id] || {}, index));
   if (!allVoted && now < game.deadline) return false;
   if (index + 1 < game.questions.length) {
     game.questionIndex++;
@@ -81,7 +81,7 @@ export function publicView(game, id, now = Date.now()) {
   const me = game.players.find(p => p.id === id);
   const index = game.questionIndex;
   const q = game.phase === 'question' ? game.questions[index] : null;
-  const voters = q ? votersFor(game, q) : [];
+  const voters = q ? votersFor(game) : [];
   const results = game.phase === 'results';
   return {
     phase: game.phase,
@@ -92,7 +92,7 @@ export function publicView(game, id, now = Date.now()) {
     })),
     text: q?.text || '', options: q?.options || [],
     vote: q ? game.answers[id]?.[index] || null : null, owner: null,
-    ownQuestion: q?.submittedBy === id, eligible: voters.length,
+    eligible: voters.length,
     voted: voters.filter(p => Object.hasOwn(game.answers[p.id] || {}, index)).length,
     remaining: q ? Math.max(0, game.deadline - now) : 0,
     review: results ? game.questions.map(item => ({

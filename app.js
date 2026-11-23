@@ -1,5 +1,5 @@
-import {ROOM_PREFIXES,normalizeRoomCode,isRoomCode,roomPeerIds} from './rooms.js?v=20261123-timed1';
-import {cleanText,makeGame,submitQuestions,canStart,startWriting,startNewCycle,startGame,castVote,finishIfReady,publicView,MAX_PLAYERS,QUESTION_TIME_MS} from './core.js?v=20261123-timed1';
+import {ROOM_PREFIXES,normalizeRoomCode,isRoomCode,roomPeerIds} from './rooms.js?v=20261123-timed2';
+import {cleanText,makeGame,submitQuestions,canStart,startWriting,startNewCycle,startGame,castVote,finishIfReady,publicView,MAX_PLAYERS,QUESTION_TIME_MS} from './core.js?v=20261123-timed2';
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -15,7 +15,7 @@ function playTone(win=false){if(!sound)return;try{audio ||= new (window.AudioCon
 $('#sound').onclick=()=>{sound=!sound;$('#sound').setAttribute('aria-label',sound?'השתקת צלילים':'הפעלת צלילים');$('#sound').textContent=sound?'♫':'♪';notify(sound?'הצלילים מופעלים':'הצלילים כבויים');playTone();};
 $('#fullscreen').onclick=()=>{if(document.fullscreenElement)document.exitFullscreen?.();else document.documentElement.requestFullscreen?.().catch(()=>notify('אפשר להמשיך לשחק גם בלי מסך מלא'));};
 const num = n => Number(n||0).toLocaleString('he-IL');
-function link(){const u=new URL(location.href);u.search='';u.hash='';u.searchParams.set('room',code);return u.href;}
+function link(){const u=new URL(location.href);u.search='';u.hash='';u.searchParams.set('room',code);u.searchParams.set('v','timed2');return u.href;}
 function toolbar(){return `<div class="toolbar"><span>${demo?'מצב התנסות':`<span class="connected"></span>חדר <b dir="ltr">${esc(code)}</b>`}</span><button class="btn small outline" data-action="leave">יציאה מהחדר</button></div>`;}
 function home(){
   screen='home'; document.body.dataset.screen='home'; const incoming=joinCode||new URLSearchParams(location.search).get('room')||'';
@@ -43,7 +43,7 @@ async function joinRoom(name,c){
           if(peer!==p||joinChosen){candidate.close();return;}
           joinChosen=true;conn=candidate;
           for(const other of joinConnections)if(other!==candidate)other.close();
-          candidate.send({type:'join',name,token:identity,protocol:5});
+          candidate.send({type:'join',name,token:identity,protocol:6});
         });
         candidate.on('data',msg=>{if(conn===candidate)guestMessage(msg);});
         candidate.on('close',()=>{if(conn===candidate&&screen!=='home'&&screen!=='loading'){networkError='החיבור למארח נותק. לחצו כדי להתחבר מחדש.';render(true);}});
@@ -54,12 +54,12 @@ async function joinRoom(name,c){
   }catch(e){fail(e.message);}
 }
 function acceptConnection(c){let id=null,joined=false;const expiry=setTimeout(()=>{if(!joined)c.close();},10000);c.on('data',msg=>{if(!msg||typeof msg!=='object'||Array.isArray(msg))return;
-  if(!joined){if(msg.type!=='join')return;if(msg.protocol!==5){c.send({type:'error',text:'העמוד שלך מגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.'});return;}const token=cleanText(msg.token,80),name=cleanText(msg.name,20);if(!name||!/^[-a-zA-Z0-9]{20,80}$/.test(token))return;
+  if(!joined){if(msg.type!=='join')return;if(msg.protocol!==6){c.send({type:'error',text:'העמוד שלך מגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.'});return;}const token=cleanText(msg.token,80),name=cleanText(msg.name,20);if(!name||!/^[-a-zA-Z0-9]{20,80}$/.test(token))return;
     let p=game.players.find(p=>p.token===token);if(p?.id===identity){c.send({type:'error',text:'השם הזה שייך למארח. פתחו את הקישור במכשיר אחר.'});return;}
     if(!p){if(game.phase!=='lobby'){c.send({type:'error',text:'המשחק כבר התחיל. תוכלו להצטרף במשחק הבא.'});return;}if(game.players.length>=MAX_PLAYERS){c.send({type:'error',text:'החדר מלא (עד 20 שחקנים).'});return;}if(game.players.some(p=>p.name===name)){c.send({type:'error',text:'השם כבר בשימוש בחדר. בחרו שם אחר.'});return;}
       id=crypto.randomUUID();p={id,name,token,active:true,ready:false,score:0,questions:[]};game.players.push(p);
     }else{id=p.id;const old=connections.get(id);if(old&&old!==c)old.close();p.active=true;}
-    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code,protocol:5});update();return;
+    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code,protocol:6});update();return;
   }
   if(connections.get(id)!==c)return;
   c._lastSeen=Date.now();const livePlayer=game.players.find(p=>p.id===id);if(livePlayer&&!livePlayer.active){livePlayer.active=true;update();}if(msg.type==='ping'){c.send({type:'pong'});return;}
@@ -68,7 +68,7 @@ function acceptConnection(c){let id=null,joined=false;const expiry=setTimeout(()
   if(msg.type==='vote'){if(msg.cycle===game.cycle&&castVote(game,id,msg.target,msg.questionIndex))update();}
 });c.on('close',()=>{clearTimeout(expiry);if(!game||connections.get(id)!==c)return;connections.delete(id);const p=game.players.find(p=>p.id===id);if(p)p.active=false;finishIfReady(game);update();});c.on('error',()=>{});}
 let myId=identity;
-function guestMessage(msg){if(!msg||typeof msg!=='object')return;lastHeartbeat=Date.now();if(msg.type==='welcome'){if(msg.protocol!==5){fail('המארח משתמש בגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.');return;}myId=msg.id;busy=false;clearTimeout(joinTimer);}else if(msg.type==='state'){const previous=view?.phase,previousCycle=view?.cycle;view=msg.view;receivedAt=performance.now();networkError='';pending=false;if((previous!=='lobby'&&view.phase==='lobby')||(previousCycle!==undefined&&previousCycle!==view.cycle)){drafts=[''];draftOwners=[];draftChoices=[['','','','']];submitted=false;}submitted=Boolean(view.players.find(p=>p.id===myId)?.ready);render();}else if(msg.type==='saved'){submitted=true;notify('נשמר! אף אחד אחר לא רואה מה כתבתם.');}else if(msg.type==='closed'){cleanup();home();notify('המארח סגר את החדר.');}else if(msg.type==='kicked'){cleanup();home();notify('המארח הוציא אותך מהחדר.');}else if(msg.type==='error'){fail(msg.text);}}
+function guestMessage(msg){if(!msg||typeof msg!=='object')return;lastHeartbeat=Date.now();if(msg.type==='welcome'){if(msg.protocol!==6){fail('המארח משתמש בגרסה קודמת. רעננו את האתר אצל כולם ופתחו חדר חדש.');return;}myId=msg.id;busy=false;clearTimeout(joinTimer);}else if(msg.type==='state'){const previous=view?.phase,previousCycle=view?.cycle;view=msg.view;receivedAt=performance.now();networkError='';pending=false;if((previous!=='lobby'&&view.phase==='lobby')||(previousCycle!==undefined&&previousCycle!==view.cycle)){drafts=[''];draftOwners=[];draftChoices=[['','','','']];submitted=false;}submitted=Boolean(view.players.find(p=>p.id===myId)?.ready);render();}else if(msg.type==='saved'){submitted=true;notify('נשמר! אף אחד אחר לא רואה מה כתבתם.');}else if(msg.type==='closed'){cleanup();home();notify('המארח סגר את החדר.');}else if(msg.type==='kicked'){cleanup();home();notify('המארח הוציא אותך מהחדר.');}else if(msg.type==='error'){fail(msg.text);}}
 function update(){if(!game||!isHost)return;const previousIndex=view?.questionIndex;view=publicView(game,identity);if(demo&&view.questionIndex!==previousIndex)scheduleBots();myId=identity;receivedAt=performance.now();for(const [id,c] of connections){if(c.open)c.send({type:'state',view:publicView(game,id)});}render();}
 function listPlayers(){return view.players.map(p=>`<div class="player"><span class="avatar">${esc(p.name.charAt(0))}</span><span class="player-name">${esc(p.name)}${p.id===myId?' <small>(אני)</small>':''}${p.id===identity&&isHost?' <small>👑</small>':''}</span><span class="status ${p.ready?'ready':''}">${!p.active?'מנותק':view.phase==='lobby'?'✓ הצטרף/ה':p.ready?'✓ מוכן/ה':'כותב/ת…'}</span>${isHost&&p.id!==identity?`<button class="kick" data-kick="${esc(p.id)}" aria-label="הוצאת ${esc(p.name)}">×</button>`:''}</div>`).join('');}
 function render(force=false){if(!view)return;const key=JSON.stringify([view.phase,view.cycle,view.questionIndex,view.round,view.players,view.vote,view.voted,view.owner,view.awarded,networkError,submitted,view.duration,view.roundLimit]);if(!force&&key===lastRenderKey)return;lastRenderKey=key;const old=screen;screen=view.phase;document.body.dataset.screen=view.phase;
@@ -115,21 +115,21 @@ function captureDrafts(){const text=document.querySelector('[data-draft]');if(te
 
 function scores(){return [...view.players].sort((a,b)=>b.score-a.score).map((p,i)=>`<div class="score-row"><span class="rank">${i===0&&view.phase==='results'?'🥇':i+1}</span><span class="avatar">${esc(p.name.charAt(0))}</span><span class="score-name">${esc(p.name)}${p.id===myId?' (אני)':''}</span><span class="delta">${p.correct||0} תשובות נכונות</span><span class="points">${num(p.score)}</span></div>`).join('');}
 function renderRound(){
-  app.innerHTML=`<div class="round-wrap play-board"><div class="progress game-timer"><div id="timer-bar" style="width:${Math.round(view.remaining/QUESTION_TIME_MS*100)}%"></div></div><div class="round-meta"><strong>מי כתב את זה?</strong><span class="round-counter">משפט ${view.round+1} מתוך ${view.total} · <span id="seconds">${Math.ceil(view.remaining/1000)}</span> שניות</span></div><section class="card quote-card"><div class="quote-mystery" aria-hidden="true">???</div><h2 class="quote-text">${esc(view.text)}</h2></section><div class="answers" aria-label="מי כתב את המשפט?">${view.options.map((p,i)=>`<button class="answer ${view.vote===p.id?'selected':''}" data-vote="${esc(p.id)}" ${view.vote||view.ownQuestion?'disabled':''} aria-pressed="${view.vote===p.id?'true':'false'}" title="מקש ${i+1}"><span class="answer-avatar" aria-hidden="true">${esc(p.name.charAt(0))}</span><span class="answer-name">${esc(p.name)}</span></button>`).join('')}</div><p class="vote-status">${view.ownQuestion?'זה המשפט שהוספתם. מחכים לבחירות של השאר.':view.vote?'הבחירה נשמרה. מחכים לשאר המשתתפים.':'בחרו מי כתב את המשפט לפני שהזמן נגמר.'}<br><span>${view.voted} מתוך ${view.eligible} בחרו</span></p><div class="play-bottom">${toolbar()}</div></div>`;
+  app.innerHTML=`<div class="round-wrap play-board"><div class="progress game-timer"><div id="timer-bar" style="width:${Math.round(view.remaining/QUESTION_TIME_MS*100)}%"></div></div><div class="round-meta"><strong>מי כתב את זה?</strong><span class="round-counter">משפט ${view.round+1} מתוך ${view.total} · <span id="seconds">${Math.ceil(view.remaining/1000)}</span> שניות</span></div><section class="card quote-card"><div class="quote-mystery" aria-hidden="true">???</div><h2 class="quote-text">${esc(view.text)}</h2></section><div class="answers" aria-label="מי כתב את המשפט?">${view.options.map((p,i)=>`<button class="answer ${view.vote===p.id?'selected':''}" data-vote="${esc(p.id)}" ${view.vote?'disabled':''} aria-pressed="${view.vote===p.id?'true':'false'}" title="מקש ${i+1}"><span class="answer-avatar" aria-hidden="true">${esc(p.name.charAt(0))}</span><span class="answer-name">${esc(p.name)}</span></button>`).join('')}</div><p class="vote-status">${view.vote?'הבחירה נשמרה. מחכים לשאר המשתתפים.':'בחרו מי כתב את המשפט לפני שהזמן נגמר.'}<br><span>${view.voted} מתוך ${view.eligible} בחרו</span></p><div class="play-bottom">${toolbar()}</div></div>`;
 }
 function renderReview(){
   const rows=view.review.map(item=>`<article class="card"><h3>${esc(item.text)}</h3><p>הוסיף/ה למשחק: <strong>${esc(item.submittedBy)}</strong></p><ul>${item.options.map(option=>`<li class="${option.id===item.owner?'correct-option-result':''}">${esc(option.name)}${option.id===item.owner?' · ✓ מי שכתב/ה':''}</li>`).join('')}</ul></article>`).join('');
   return `<section class="answer-review"><h2>מי כתב מה?</h2>${rows}</section>`;
 }
 
-function renderResults(){const sorted=[...view.players].sort((a,b)=>b.score-a.score),winners=sorted.filter(p=>p.score===sorted[0]?.score);app.innerHTML=`<div class="round-wrap">${toolbar()}<section class="results-hero"><div class="trophy">🏆</div><h1>${winners.length===1?`${esc(winners[0].name)} <em>מוביל/ה!</em>`:'<em>יש לנו תיקו!</em>'}</h1><p>סיבוב ${view.cycle} הסתיים. הניקוד נשמר לסיבוב הבא.</p></section><section class="card end-card"><h2>לוח התהילה</h2><div class="score-table">${scores()}</div>${isHost?'<button class="btn wide section-gap" data-action="restart">סיבוב חדש — משפט חדש לכל אחד 🎉</button>':'<div class="note">עוד משחק? המארח יכול לפתוח סיבוב חדש באותו חדר.</div>'}<button class="btn outline wide section-gap" data-action="result-share">לשתף את התוצאה</button></section>${renderReview()}</div>`;playTone(true);}
+function renderResults(){const sorted=[...view.players].sort((a,b)=>b.score-a.score),winners=sorted.filter(p=>p.score===sorted[0]?.score);app.innerHTML=`<div class="round-wrap">${toolbar()}<section class="results-hero"><div class="trophy">🏆</div><h1>${winners.length===1?`${esc(winners[0].name)} <em>מוביל/ה!</em>`:'<em>יש לנו תיקו!</em>'}</h1><p>סיבוב ${view.cycle} הסתיים. הניקוד נשמר לסיבוב הבא.</p></section><section class="card end-card"><h2>לוח התהילה</h2><div class="score-table">${scores()}</div>${isHost?'<button class="btn wide section-gap" data-action="restart">ממשיכים לראונד הבא 🎉</button>':'<div class="note">מחכים שהמארח יפתח את הראונד הבא.</div>'}<button class="btn outline wide section-gap" data-action="result-share">לשתף את התוצאה</button></section>${renderReview()}</div>`;playTone(true);}
 function start(){if(!canStart(game)){notify('צריך לפחות שני שחקנים ושכולם יסיימו לכתוב');return;}if(startGame(game)){update();playTone();}}
 function scheduleBots(){
   demoTimers.forEach(clearTimeout);
   demoTimers=[];
   if(!demo||game.phase!=='question')return;
   const index=game.questionIndex, cycle=game.cycle, question=game.questions[index];
-  for(const player of game.players.filter(p=>p.bot&&p.id!==question.submittedBy)){
+  for(const player of game.players.filter(p=>p.bot)){
     demoTimers.push(setTimeout(()=>{
       if(!game||game.cycle!==cycle||game.questionIndex!==index)return;
       const choice=Math.random()<.65?question.owner:question.options[Math.floor(Math.random()*4)].id;
