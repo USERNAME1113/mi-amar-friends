@@ -1,4 +1,5 @@
-import {cleanText,makeGame,submitQuestions,canStart,startWriting,startGame,nextRound,castVote,reveal,allVoted,publicView,MAX_PLAYERS} from './core.js';
+import {ROOM_PREFIXES,normalizeRoomCode,isRoomCode,roomPeerIds} from './rooms.js?v=20261123-rooms1';
+import {cleanText,makeGame,submitQuestions,canStart,startWriting,startGame,nextRound,castVote,reveal,allVoted,publicView,MAX_PLAYERS} from './core.js?v=20261123-rooms1';
 const $ = s => document.querySelector(s);
 const app = $('#app');
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -6,6 +7,7 @@ const identity = (()=>{try{let id=sessionStorage.getItem('mw-id');if(!id){id=cry
 let peer, conn, game, view, code='', isHost=false, demo=false, connections=new Map(), screen='home', currentName='', networkError='', receivedAt=0, lastRenderKey='', drafts=[''], submitted=false, pending=false, lastHeartbeat=0, busy=false;
 let sound=false, audio, demoTimers=[], joinTimer, toastTimer;
 let draftOwners=[];
+let aliasPeers=[],joinConnections=[],joinMissing=0,joinCode='',joinChosen=false;
 const alphabet='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 function roomCode(){return [...crypto.getRandomValues(new Uint8Array(6))].map(n=>alphabet[n%alphabet.length]).join('');}
 function notify(text){$('#toast').textContent=text;$('#toast').classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('#toast').classList.remove('show'),4000);}
@@ -16,27 +18,48 @@ const num = n => Number(n||0).toLocaleString('he-IL');
 function link(){const u=new URL(location.href);u.search='';u.hash='';u.searchParams.set('room',code);return u.href;}
 function toolbar(){return `<div class="toolbar"><span>${demo?'מצב התנסות':`<span class="connected"></span>חדר <b dir="ltr">${esc(code)}</b>`}</span><button class="btn small outline" data-action="leave">יציאה מהחדר</button></div>`;}
 function home(){
-  screen='home'; document.body.dataset.screen='home'; const incoming=new URLSearchParams(location.search).get('room')||'';
+  screen='home'; document.body.dataset.screen='home'; const incoming=joinCode||new URLSearchParams(location.search).get('room')||'';
   app.innerHTML=`<section class="hero"><div class="badge">✦ המשחק חינם. הפדיחות עליכם.</div><div class="hero-art" aria-hidden="true"><span class="bubble one">״אני מגיע בעוד חמש דקות״ <small>👀</small></span><span class="bubble two">נו באמת, מי כתב את זה? 😂</span></div><h1>מי כתב <em>את זה?</em></h1><p>כל אחד כותב משהו בסתר. כולם מנחשים מי כתב.<br>חושבים שאתם מכירים את החברים שלכם?</p></section>
   <div class="grid"><section class="card"><div class="card-top"><h2>פותחים משחק</h2><span class="sticker" aria-hidden="true">✦</span></div><p class="muted">מזמינים את החבר׳ה, מקבלים קוד ומתחילים.</p><form id="create-form"><label class="field"><span>איך קוראים לך?</span><input name="name" placeholder="השם שכולם מכירים" maxlength="20" required autocomplete="nickname" value="${esc(currentName)}"></label><button class="btn wide" type="submit">פותחים חדר חדש 🎉</button></form></section>
-  <section class="card"><div class="card-top"><h2>יש לכם קוד?</h2><span class="sticker" style="background:var(--mint)" aria-hidden="true">#</span></div><p class="muted">מישהו כבר פתח משחק? נכנסים לחדר שלו.</p><form id="join-form"><label class="field"><span>השם שלך</span><input name="name" placeholder="ככה תופיעו במשחק" maxlength="20" required autocomplete="nickname" value="${esc(currentName)}"></label><label class="field"><span>קוד החדר</span><input class="code-input" name="code" placeholder="ABC234" maxlength="6" minlength="6" required autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(incoming)}"></label><button class="btn purple wide" type="submit">מצטרפים למשחק</button></form></section></div>
+  <section class="card"><div class="card-top"><h2>יש לכם קוד?</h2><span class="sticker" style="background:var(--mint)" aria-hidden="true">#</span></div><p class="muted">מישהו כבר פתח משחק? נכנסים לחדר שלו.</p><form id="join-form"><label class="field"><span>השם שלך</span><input name="name" placeholder="ככה תופיעו במשחק" maxlength="20" required autocomplete="nickname" value="${esc(currentName)}"></label><label class="field"><span>קוד החדר</span><input class="code-input" name="code" placeholder="ABC234" maxlength="32" minlength="6" required autocapitalize="characters" autocomplete="off" spellcheck="false" value="${esc(incoming)}"></label><button class="btn purple wide" type="submit">מצטרפים למשחק</button></form></section></div>
   <p class="home-note">✓ בלי צ׳אט מוואטסאפ &nbsp; ✓ מכל טלפון &nbsp; ✓ בלי הרשמה</p><div class="steps"><div class="step"><b>1</b>נכנסים עם קוד</div><div class="step"><b>2</b>כותבים בסתר</div><div class="step"><b>3</b>מנחשים וצוחקים</div></div><button class="demo" data-action="demo">רוצים לראות איך זה עובד? נסו משחק לדוגמה</button>`;
   $('#create-form').onsubmit=e=>{e.preventDefault();const name=cleanText(new FormData(e.target).get('name'),20);if(name)createRoom(name);};
-  $('#join-form').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=cleanText(f.get('name'),20),c=String(f.get('code')).toUpperCase().trim();if(name&&/^[A-Z2-9]{6}$/.test(c))joinRoom(name,c);else notify('הקוד צריך לכלול 6 אותיות או ספרות באנגלית');};
+  $('#join-form').onsubmit=e=>{e.preventDefault();const f=new FormData(e.target),name=cleanText(f.get('name'),20),c=normalizeRoomCode(f.get('code'));if(name&&isRoomCode(c))joinRoom(name,c);else notify('הקוד צריך לכלול 6 אותיות או ספרות באנגלית');};
 }
 function loading(text){screen='loading';app.innerHTML=`<div class="waiting"><div class="spinner"></div><h2>${esc(text)}</h2><p>עוד רגע החבר׳ה נפגשים…</p><button class="btn outline section-gap" style="color:white;border-color:white;margin-inline:auto" data-action="cancel">ביטול</button></div>`;}
-function fail(text){networkError=text;busy=false;clearTimeout(joinTimer);if(screen==='loading'){cleanup();home();notify(text);}else{render(true);notify(text);}}
+function fail(text){networkError=text;busy=false;clearTimeout(joinTimer);if(screen==='loading'){cleanup();home();const error=document.createElement('div');error.className='error-box';error.setAttribute('role','alert');error.textContent=text;$('#join-form').prepend(error);notify(text);}else{render(true);notify(text);}}
 async function requirePeer(){if(!window.Peer){await new Promise(r=>setTimeout(r,800));}if(!window.Peer)throw new Error('ספריית החיבור לא נטענה. בדקו את האינטרנט ורעננו את העמוד.');}
-function attachPeerErrors(p){p.on('error',err=>{if(p!==peer)return;if(err.type==='peer-unavailable')fail('החדר לא נמצא. בדקו את הקוד ושמי שפתח את החדר עדיין מחובר.');else if(err.type==='unavailable-id')fail('הקוד תפוס כרגע. נסו לפתוח חדר חדש.');else if(err.type!=='disconnected')fail('לא הצלחנו להתחבר. נסו שוב, או נסו רשת Wi-Fi אחרת.');});p.on('disconnected',()=>{if(p===peer&&!p.destroyed){networkError='החיבור לשירות החדרים נותק. מנסים להתחבר מחדש…';render(true);try{p.reconnect();}catch{}}});p.on('open',()=>{networkError='';});}
-async function createRoom(name){if(busy)return;cleanup();busy=true;currentName=name;isHost=true;code=roomCode();drafts=[''];draftOwners=[];submitted=false;loading('פותחים את החדר שלכם');try{await requirePeer();game=makeGame({id:identity,name,token:identity});peer=new Peer('mwparty-v2-'+code,{debug:0});attachPeerErrors(peer);peer.on('open',()=>{if(!isHost)return;busy=false;clearTimeout(joinTimer);networkError='';update();});peer.on('connection',acceptConnection);joinTimer=setTimeout(()=>fail('פתיחת החדר התעכבה. בדקו את החיבור ונסו שוב.'),18000);}catch(e){fail(e.message);}}
-async function joinRoom(name,c){if(busy)return;cleanup();busy=true;currentName=name;isHost=false;code=c;drafts=[''];draftOwners=[];submitted=false;loading('נכנסים לחדר');try{await requirePeer();peer=new Peer(undefined,{debug:0});attachPeerErrors(peer);peer.on('open',()=>{conn=peer.connect('mwparty-v2-'+code,{reliable:true,serialization:'json'});conn.on('open',()=>conn.send({type:'join',name,token:identity}));conn.on('data',guestMessage);conn.on('close',()=>{if(screen!=='home'&&screen!=='loading'){networkError='החיבור למארח נותק. לחצו כדי להתחבר מחדש.';render(true);}});conn.on('error',()=>fail('החיבור לחדר נכשל. ודאו שהמארח עדיין בעמוד.'));});joinTimer=setTimeout(()=>fail('לא התקבלה תשובה מהחדר. בדקו את הקוד ונסו לעבור ל־Wi-Fi.'),22000);}catch(e){fail(e.message);}}
+function attachPeerErrors(p){p.on('error',err=>{if(p!==peer)return;if(err.type==='peer-unavailable'){if(!isHost&&screen==='loading'&&!joinChosen){joinMissing++;if(joinMissing>=ROOM_PREFIXES.length)fail('החדר לא נמצא בשירות החדרים. בקשו מהמארח לרענן ולפתוח חדר חדש, והשאירו את העמוד שלו פתוח.');}return;}else if(err.type==='unavailable-id')fail('הקוד תפוס כרגע. נסו לפתוח חדר חדש.');else if(err.type!=='disconnected')fail('לא הצלחנו להתחבר. נסו שוב, או נסו רשת Wi-Fi אחרת.');});p.on('disconnected',()=>{if(p===peer&&!p.destroyed){networkError='החיבור לשירות החדרים נותק. מנסים להתחבר מחדש…';render(true);try{p.reconnect();}catch{}}});p.on('open',()=>{networkError='';});}
+async function createRoom(name){if(busy)return;cleanup();busy=true;currentName=name;isHost=true;code=roomCode();drafts=[''];draftOwners=[];submitted=false;loading('פותחים את החדר שלכם');try{await requirePeer();game=makeGame({id:identity,name,token:identity});peer=new Peer(roomPeerIds(code)[0],{debug:0});attachPeerErrors(peer);peer.on('open',()=>{if(!isHost)return;busy=false;clearTimeout(joinTimer);networkError='';for(const id of roomPeerIds(code).slice(1)){const alias=new Peer(id,{debug:0});aliasPeers.push(alias);alias.on('connection',acceptConnection);alias.on('error',err=>{if(err.type==='unavailable-id')fail('הקוד כבר בשימוש. צאו ופתחו חדר חדש.');});alias.on('disconnected',()=>{if(!alias.destroyed){try{alias.reconnect();}catch{}}});}update();});peer.on('connection',acceptConnection);joinTimer=setTimeout(()=>fail('פתיחת החדר התעכבה. בדקו את החיבור ונסו שוב.'),18000);}catch(e){fail(e.message);}}
+async function joinRoom(name,c){
+  if(busy)return;cleanup();busy=true;currentName=name;isHost=false;code=normalizeRoomCode(c);joinCode=code;drafts=[''];draftOwners=[];submitted=false;loading('נכנסים לחדר');
+  try{
+    await requirePeer();const p=new Peer(undefined,{debug:0});peer=p;attachPeerErrors(p);
+    p.on('open',()=>{
+      if(peer!==p||joinChosen)return;
+      for(const target of roomPeerIds(code)){
+        const candidate=p.connect(target,{reliable:true,serialization:'json'});joinConnections.push(candidate);
+        candidate.on('open',()=>{
+          if(peer!==p||joinChosen){candidate.close();return;}
+          joinChosen=true;conn=candidate;
+          for(const other of joinConnections)if(other!==candidate)other.close();
+          candidate.send({type:'join',name,token:identity});
+        });
+        candidate.on('data',msg=>{if(conn===candidate)guestMessage(msg);});
+        candidate.on('close',()=>{if(conn===candidate&&screen!=='home'&&screen!=='loading'){networkError='החיבור למארח נותק. לחצו כדי להתחבר מחדש.';render(true);}});
+        candidate.on('error',()=>{if(conn===candidate)fail('החיבור לחדר נותק. אפשר לנסות שוב באותו קוד.');});
+      }
+    });
+    joinTimer=setTimeout(()=>fail('הקוד נקלט, אך החיבור למארח לא הושלם. השאירו את עמוד המארח פתוח ונסו שוב. אם אתם ברשת סלולרית, נסו Wi-Fi.'),25000);
+  }catch(e){fail(e.message);}
+}
 function acceptConnection(c){let id=null,joined=false;const expiry=setTimeout(()=>{if(!joined)c.close();},10000);c.on('data',msg=>{if(!msg||typeof msg!=='object'||Array.isArray(msg))return;
   if(!joined){if(msg.type!=='join')return;const token=cleanText(msg.token,80),name=cleanText(msg.name,20);if(!name||!/^[-a-zA-Z0-9]{20,80}$/.test(token))return;
     let p=game.players.find(p=>p.token===token);if(p?.id===identity){c.send({type:'error',text:'השם הזה שייך למארח. פתחו את הקישור במכשיר אחר.'});return;}
     if(!p){if(game.phase!=='lobby'){c.send({type:'error',text:'המשחק כבר התחיל. תוכלו להצטרף במשחק הבא.'});return;}if(game.players.length>=MAX_PLAYERS){c.send({type:'error',text:'החדר מלא (עד 20 שחקנים).'});return;}if(game.players.some(p=>p.name===name)){c.send({type:'error',text:'השם כבר בשימוש בחדר. בחרו שם אחר.'});return;}
       id=crypto.randomUUID();p={id,name,token,active:true,ready:false,score:0,questions:[]};game.players.push(p);
     }else{id=p.id;const old=connections.get(id);if(old&&old!==c)old.close();p.active=true;}
-    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code});update();return;
+    id=p.id;joined=true;clearTimeout(expiry);connections.set(id,c);c._lastSeen=Date.now();c.send({type:'welcome',id,host:identity,code,protocol:2});update();return;
   }
   if(connections.get(id)!==c)return;
   c._lastSeen=Date.now();const livePlayer=game.players.find(p=>p.id===id);if(livePlayer&&!livePlayer.active){livePlayer.active=true;update();}if(msg.type==='ping'){c.send({type:'pong'});return;}
@@ -97,8 +120,8 @@ function scheduleBots(){if(!demo||game.phase!=='question')return;for(const p of 
 function demoGame(){cleanup();demo=true;isHost=true;code='DEMO';currentName='אני';drafts=['אני רק בא לחמש דקות, נשבע'];draftOwners=[identity];submitted=false;game=makeGame({id:identity,name:'אני',token:identity});for(const [i,name,text] of [[1,'נועה','מישהו ראה את המטען שלי? הוא היה פה לפני שנייה'],[2,'איתי','אני לא מאחר, אתם פשוט באים מוקדם מדי'],[3,'מאיה','מי אכל את הפיצה שהשארתי במקרר?!']])game.players.push({id:'bot'+i,name,active:true,ready:true,score:0,questions:[text],bot:true});update();}
 async function copy(text){try{await navigator.clipboard.writeText(text);notify('הקישור הועתק! שולחים לחבר׳ה.');}catch{const a=document.createElement('textarea');a.value=text;document.body.append(a);a.select();const ok=document.execCommand('copy');a.remove();notify(ok?'הקישור הועתק':'לא ניתן להעתיק. הקוד לחדר הוא '+code);}}
 async function share(text,url){if(navigator.share){try{await navigator.share({title:'מי כתב את זה?',text,url});return;}catch(e){if(e.name==='AbortError')return;}}copy(text+'\n'+url);}
-function cleanup(){clearTimeout(joinTimer);demoTimers.forEach(clearTimeout);demoTimers=[];for(const c of connections.values())c.close();connections.clear();conn?.close();peer?.destroy();conn=null;peer=null;game=null;view=null;isHost=false;demo=false;busy=false;pending=false;networkError='';lastRenderKey='';myId=identity;}
-function leave(){if(isHost&&!demo&&connections.size){for(const c of connections.values())if(c.open)c.send({type:'closed'});}cleanup();const u=new URL(location.href);u.search='';history.replaceState(null,'',u.pathname);home();}
+function cleanup(){clearTimeout(joinTimer);for(const p of aliasPeers)p.destroy();aliasPeers=[];for(const c of joinConnections)c.close();joinConnections=[];joinMissing=0;joinChosen=false;demoTimers.forEach(clearTimeout);demoTimers=[];for(const c of connections.values())c.close();connections.clear();conn?.close();peer?.destroy();conn=null;peer=null;game=null;view=null;isHost=false;demo=false;busy=false;pending=false;networkError='';lastRenderKey='';myId=identity;}
+function leave(){if(isHost&&!demo&&connections.size){for(const c of connections.values())if(c.open)c.send({type:'closed'});}cleanup();const u=new URL(location.href);u.search='';history.replaceState(null,'',u.pathname);joinCode='';home();}
 app.addEventListener('click',e=>{const b=e.target.closest('button');if(!b||b.disabled)return;
   if(b.dataset.vote){if(isHost){if(castVote(game,identity,b.dataset.vote)){playTone();if(allVoted(game))doReveal();else update();}}else if(conn?.open){conn.send({type:'vote',round:view.round,target:b.dataset.vote});view.vote=b.dataset.vote;render(true);playTone();}else notify('החיבור למארח נותק. נסו להתחבר מחדש.');return;}
   if(b.dataset.kick&&isHost){const id=b.dataset.kick,c=connections.get(id);if(c?.open)c.send({type:'kicked'});connections.delete(id);c?.close();game.players=game.players.filter(p=>p.id!==id);update();return;}
