@@ -14,8 +14,11 @@ export function makeGame(host) {
 export function submitQuestions(game, id, texts) {
   const p = game.players.find(p => p.id === id);
   if (!p || game.phase !== 'writing' || !Array.isArray(texts)) return false;
-  const questions = texts.slice(0, MAX_QUESTIONS).map(t => cleanText(t)).filter(t => t.length >= 3);
-  if (!questions.length) return false;
+  const questions = texts.slice(0, MAX_QUESTIONS).map(t => ({
+    text: cleanText(typeof t === 'string' ? t : t?.text),
+    owner: typeof t === 'string' ? id : t?.owner,
+  }));
+  if (!questions.length || questions.some(q => q.text.length < 3 || !game.players.some(p => p.id === q.owner))) return false;
   p.questions = questions; p.ready = true; return true;
 }
 export function startWriting(game) {
@@ -28,7 +31,11 @@ export function canStart(game) {
 }
 export function startGame(game, now = Date.now()) {
   if (!canStart(game)) return false;
-  const all = game.players.filter(p => p.active).flatMap(p => p.questions.map(text => ({ text, owner: p.id })));
+  const all = game.players.filter(p => p.active).flatMap(p => p.questions.map(q => ({
+    text: typeof q === 'string' ? q : q.text,
+    owner: typeof q === 'string' ? p.id : q.owner,
+    submittedBy: p.id,
+  })));
   game.questions = shuffle(all).slice(0, game.roundLimit || all.length);
   game.round = -1; return nextRound(game, now);
 }
@@ -40,13 +47,13 @@ export function nextRound(game, now = Date.now()) {
 }
 export function castVote(game, voter, target, now = Date.now()) {
   const q = game.questions[game.round];
-  if (game.phase !== 'question' || now > game.deadline || !q || q.owner === voter || Object.hasOwn(game.votes, voter)) return false;
+  if (game.phase !== 'question' || now > game.deadline || !q || (q.submittedBy || q.owner) === voter || Object.hasOwn(game.votes, voter)) return false;
   if (!game.players.some(p => p.id === voter && p.active) || !game.players.some(p => p.id === target)) return false;
   game.votes[voter] = { target, at: Math.max(now, game.started) }; return true;
 }
 export function eligibleVoters(game) {
   const q = game.questions[game.round];
-  return q ? game.players.filter(p => p.active && p.id !== q.owner) : [];
+  return q ? game.players.filter(p => p.active && p.id !== (q.submittedBy || q.owner)) : [];
 }
 export function allVoted(game) {
   return game.phase === 'question' && eligibleVoters(game).every(p => Object.hasOwn(game.votes, p.id));
@@ -67,7 +74,7 @@ export function publicView(game, id, now = Date.now()) {
     phase: game.phase, players: game.players.map(({ id, name, active, ready, score, questions }) => ({ id, name, active, ready, score, count: questions.length })),
     round: game.round, total: game.questions.length, duration: game.duration, roundLimit: game.roundLimit,
     remaining: Math.max(0, game.deadline - now), text: q?.text || '',
-    ownQuestion: q?.owner === id, owner: game.phase === 'reveal' ? q?.owner : null,
+    ownQuestion: (q?.submittedBy || q?.owner) === id, owner: game.phase === 'reveal' ? q?.owner : null,
     vote: game.votes[id]?.target || null, voted: Object.keys(game.votes).length,
     eligible: eligibleVoters(game).length, awarded: game.phase === 'reveal' ? game.awarded : {},
     myQuestions: game.phase === 'writing' ? me?.questions || [] : [],

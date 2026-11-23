@@ -1,0 +1,69 @@
+/* The lobby holds invitations; writing and voting each use the full stage. */
+body[data-screen="writing"] header,body[data-screen="question"] header,body[data-screen="reveal"] header{display:none}
+body[data-screen="writing"] footer,body[data-screen="question"] footer,body[data-screen="reveal"] footer{display:none}
+body[data-screen="writing"] main{max-width:960px;padding-top:20px}
+body[data-screen="writing"]>.toolbar{max-width:960px}
+body[data-screen="writing"] .toolbar>span{display:none}
+body[data-screen="writing"] .toolbar{justify-content:flex-end;margin:0 0 18px}
+.writing-wrap{max-width:800px;margin:0 auto 30px}
+.writing-card{padding:30px 34px}
+.writing-heading{display:flex;align-items:center;justify-content:space-between;flex-direction:row-reverse;gap:18px;margin-bottom:12px}
+.writing-heading h2{font-size:34px}
+.writing-card>p{font-size:15px;margin:0 0 26px;line-height:1.9}
+.question-editor{border-bottom:2px solid #e9e1f3;padding-bottom:24px;margin-bottom:25px}
+.question-editor:last-child{margin-bottom:0}
+.question-row>label{display:block;font-size:16px;font-weight:800;margin-bottom:9px}
+.question-row textarea{min-height:130px;font-size:20px;padding:18px;line-height:1.8}
+.question-row .remove-q{top:45px}
+.author-picker{padding:0;border:0;margin:22px 0 0;min-width:0}
+.author-picker legend{font-size:19px;font-weight:900;margin-bottom:14px;padding:0}
+.author-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.author-option{position:relative;display:flex;align-items:center;gap:10px;min-height:65px;background:white;border:2px solid #d9cdee;border-radius:14px;padding:12px;cursor:pointer;font-size:18px;font-weight:800;overflow-wrap:anywhere}
+.author-option input{position:absolute;opacity:0;width:1px;height:1px;padding:0}
+.author-option:has(input:checked){background:#e2fff6;border-color:#261640;box-shadow:0 3px 0 #261640}
+.author-option:has(input:focus-visible){outline:4px solid var(--purple);outline-offset:3px}
+.author-option:hover{border-color:var(--purple)}
+.author-avatar{display:grid;place-items:center;width:34px;height:34px;flex-shrink:0;border:2px solid var(--ink);border-radius:11px;background:var(--yellow);font-size:17px}
+.author-option:nth-child(4n+2) .author-avatar{background:var(--pink)}
+.author-option:nth-child(4n+3) .author-avatar{background:var(--mint)}
+.author-option:nth-child(4n+4) .author-avatar{background:#b099ff}
+.author-check{margin-right:auto;color:#0a7a5b;visibility:hidden}
+.author-option:has(input:checked) .author-check{visibility:visible}
+.draft-actions{margin-top:16px;flex-wrap:wrap}
+.writing-progress{font-size:15px;font-weight:700;color:#7b6a96;text-align:center;margin:22px 0}
+.writing-wait{text-align:center;margin-top:20px!important}
+.game-settings{border-top:1px solid #e8dff0;padding-top:18px}
+.game-settings summary{cursor:pointer;color:#79658f;font-size:14px;font-weight:700}
+body[data-screen="question"] main,body[data-screen="reveal"] main{max-width:none;width:100%;padding:18px 12px 25px}
+.play-board.round-wrap{max-width:none;width:100%;margin:0}
+.game-timer.progress{height:18px;background:#442390;border:3px solid var(--ink);margin:6px 0 14px;border-radius:30px}
+.game-timer.progress>div{background:#ffc531;transition:width .25s linear}
+.play-board .round-meta{margin:8px 0 26px;font-size:16px}
+.play-board .round-meta>strong{color:#fff;font-size:19px;font-weight:900;text-shadow:1px 2px 0 var(--ink)}
+.round-counter{font-size:14px;color:#eee3ff}
+.play-board .quote-card{padding:20px 24px 26px;text-align:right;border-radius:26px 12px 26px 26px;min-height:145px;display:flex;flex-direction:column;justify-content:center;margin-bottom:22px;box-shadow:0 8px 0 var(--ink)}
+.quote-mystery{color:#b8a8da;font-size:17px;font-weight:900;margin-bottom:7px}
+.play-board .quote-text{font-size:clamp(26px,3vw,42px);line-height:1.6;font-weight:900}
+.play-board .answers{gap:17px 14px;margin-top:0}
+.play-board .answer{position:relative;display:flex;flex-direction:column;justify-content:center;gap:12px;min-height:140px;padding:16px;color:white;border-radius:25px;border:3px solid var(--ink);box-shadow:inset 0 5px 0 #ffffff4d,inset 0 -9px 0 #00000020,0 8px 0 var(--ink);text-align:center;background:#7954ff;opacity:1}
+.play-board .answer:nth-child(4n+2){background:#ff56a5}
+.play-board .answer:nth-child(4n+3){background:#ffad25}
+.play-board .answer:nth-child(4n+4){background:#12bd9f}
+.play-board .answer-avatar{width:55px;height:55px;border:2px solid var(--ink);border-radius:50%;background:#ffffff45;display:grid;place-items:center;font-size:24px;font-weight:900}
+.play-board .answer-name{font-size:29px;font-weight:900;text-shadow:1px 2px 0 var(--ink),-1px -1px 0 var(--ink)}
+.play-board .answer.selected{outline:4px solid #ffdf55;outline-offset:3px}
+.play-board .answer:disabled{opacity:1;cursor:default}
+.play-board .answer:hover:not(:disabled){filter:brightness(1.1);transform:translateY(-2px)}
+.play-board .answer.correct{background:#14c99d;outline:4px solid #9cffd9;outline-offset:2px}
+.play-board .answer.wrong{background:#d14877;opacity:.65}
+.play-board .vote-status{margin:25px 0 10px;line-height:1.9}
+.play-board .vote-status>span{font-size:22px;font-weight:900}
+.play-board .reveal-control{color:#fff;border-color:#ffffff66;margin:12px auto;max-width:240px}
+.round-scores{max-width:800px;margin:auto}
+.play-board>.reveal-banner{max-width:800px;margin:28px auto 20px}
+.play-board>.section-gap{max-width:800px;margin:24px auto}
+.play-bottom .toolbar{margin:25px 0 0;color:#ded1f7;justify-content:flex-end}
+.play-bottom .toolbar>span{display:none}
+.play-bottom .btn{font-size:12px;border-width:1px;opacity:.8;min-height:34px}
+@media(min-width:1100px){.play-board .answer{min-height:145px}.play-board .quote-card{min-height:150px}}
+@media(max-width:640px){body[data-screen="writing"] main{padding:12px}.writing-card{padding:23px 18px}.writing-heading h2{font-size:29px}.writing-card>p{font-size:14px}.author-options{grid-template-columns:1fr}.author-option{min-height:59px}.question-row textarea{font-size:18px;min-height:110px}.author-picker legend{font-size:18px}.game-timer.progress{height:13px}.play-board .round-meta{margin-bottom:20px;font-size:13px}.play-board .round-meta>strong{font-size:16px}.play-board .round-counter{font-size:12px}.play-board .quote-card{padding:18px;min-height:150px;margin-bottom:21px}.play-board .quote-text{font-size:28px}.play-board .answers{gap:14px 11px}.play-board .answer{min-height:130px;padding:14px 8px;gap:10px;border-radius:20px}.play-board .answer-avatar{width:43px;height:43px;font-size:20px}.play-board .answer-name{font-size:23px}.play-board .vote-status{font-size:14px}.play-board .reveal-banner{font-size:18px}.writing-progress{font-size:14px}}
