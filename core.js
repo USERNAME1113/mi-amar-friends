@@ -13,14 +13,18 @@ export function makeGame(host) {
 }
 export function submitQuestions(game, id, texts) {
   const p = game.players.find(p => p.id === id);
-  if (!p || game.phase !== 'lobby' || !Array.isArray(texts)) return false;
+  if (!p || game.phase !== 'writing' || !Array.isArray(texts)) return false;
   const questions = texts.slice(0, MAX_QUESTIONS).map(t => cleanText(t)).filter(t => t.length >= 3);
   if (!questions.length) return false;
   p.questions = questions; p.ready = true; return true;
 }
+export function startWriting(game) {
+  if (game.phase !== 'lobby' || game.players.filter(p => p.active).length < 2) return false;
+  game.phase = 'writing'; return true;
+}
 export function canStart(game) {
   const active = game.players.filter(p => p.active);
-  return game.phase === 'lobby' && active.length >= 2 && active.every(p => p.ready);
+  return game.phase === 'writing' && active.length >= 2 && active.every(p => p.ready);
 }
 export function startGame(game, now = Date.now()) {
   if (!canStart(game)) return false;
@@ -29,7 +33,7 @@ export function startGame(game, now = Date.now()) {
   game.round = -1; return nextRound(game, now);
 }
 export function nextRound(game, now = Date.now()) {
-  if (!['lobby', 'reveal'].includes(game.phase)) return false;
+  if (!['writing', 'reveal'].includes(game.phase)) return false;
   game.round++; game.votes = {}; game.awarded = {};
   if (game.round >= game.questions.length) { game.phase = 'results'; return true; }
   game.phase = 'question'; game.started = now; game.deadline = now + game.duration * 1000; return true;
@@ -66,6 +70,6 @@ export function publicView(game, id, now = Date.now()) {
     ownQuestion: q?.owner === id, owner: game.phase === 'reveal' ? q?.owner : null,
     vote: game.votes[id]?.target || null, voted: Object.keys(game.votes).length,
     eligible: eligibleVoters(game).length, awarded: game.phase === 'reveal' ? game.awarded : {},
-    myQuestions: game.phase === 'lobby' ? me?.questions || [] : [],
+    myQuestions: game.phase === 'writing' ? me?.questions || [] : [],
   };
 }
